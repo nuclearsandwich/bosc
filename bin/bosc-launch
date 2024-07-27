@@ -1,0 +1,40 @@
+#!/bin/sh
+
+. "${HOME}/.config/bosc/config.sh"
+
+if [ "$1" = "--" ]; then
+	echo "Default job not yet supported, at least supply a job name" 1>&2
+	exit 1
+fi
+
+if [ "$2" = "--" ]; then
+	jenkins_name=default
+	jenkins_job="$1"; shift
+else
+	jenkins_name="$1"; shift
+	jenkins_job="$1"; shift
+fi
+
+jenkins_url="$(eval echo "\$BOSC_JENKINS_URL__$jenkins_name")"
+jenkins_username="$(eval echo "\$BOSC_JENKINS_USERNAME__$jenkins_name")"
+jenkins_token="$(eval echo "\$BOSC_JENKINS_TOKEN__$jenkins_name")"
+
+jenkins_job_url="${jenkins_url}/job/${jenkins_job}/buildWithParameters"
+
+query_params="$(eval echo "\$BOSC_DEFAULT_ARGS__${jenkins_name}__${jenkins_job}")"
+for param in "$@"; do
+	param_file=$(mktemp /tmp/bosclaunch.XXXXXX)
+	param_name=$(printf "%s" "$param" | cut -d= -f1)
+	printf "%s" "$param" | cut -d= -f2- > "$param_file"
+	query_params="${query_params} --url-query ${param_name}@${param_file}"
+done
+
+location="$(
+	curl -s -X POST -u "${jenkins_username}:${jenkins_token}" \
+		$query_params "${jenkins_job_url}" \
+		-w "%header{location}"
+	)"
+
+echo "Queued as $location"
+echo "Due to the way Jenkins is, this url is totally opaque"
+echo "Feeding it to some future bosc command may allow you to learn when it goes from queued to started."
